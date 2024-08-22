@@ -310,3 +310,53 @@ class MyViewController: UIViewController {
     }
 }
 ```
+
+# Section 4 - Retrieving and Managing Context Processes
+
+Retrieve context processes for a specific context name and start or resume one, updating the flow state accordingly.
+
+Usage Example
+
+```swift
+import Resolver
+
+// Step 1: Retrieve context processes for a specific context name
+Resolver.resolve(EPUseCase.self).getContextProcesses(for: "account", checkTokenExpired: true) { result in
+    switch result {
+    case .success(let list):
+        // Step 2: Start or resume the first process in the list
+        if let firstProcess = list.first {
+            Resolver.resolve(EPUseCase.self).startOrResumeContextProcess(
+                name: firstProcess.name,
+                data: ["accountId": "482394293423489", "iban": "SI5640294520495870"],
+                checkTokenExpired: false
+            ) { processResult in
+                switch processResult {
+                case .success(let instance):
+                    // Update the flow state to open on top of the current context
+                    Resolver.resolve(EDStateUseCase.self).state?(.presentFlow(instance))
+                case .failure(let error):
+                    // Handle the error (e.g., log or show an alert)
+                    print("Failed to start or resume process: \(error)")
+                }
+            }
+        }
+    case .failure(let error):
+        // Handle the error from getting context processes
+        print("Failed to get context processes: \(error)")
+    }
+}
+```
+
+## Key Points
+
+### Retrieve Context Processes:
+- Use `getContextProcesses(for:checkTokenExpired:callback:)` in `EPUseCase` to fetch processes related to the specified context name.
+- Handle the result to decide on further actions.
+
+### Start or Resume a Process:
+- Use `startOrResumeContextProcess(name:data:checkTokenExpired:callback:)` in `EPUseCase` with the selected process.
+- Update the flow state to ensure the process appears on top of the current application context.
+
+### Error Handling:
+- Implement appropriate error handling at each step to ensure a smooth user experience.
