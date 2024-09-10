@@ -360,3 +360,48 @@ Resolver.resolve(EPUseCase.self).getContextProcesses(for: "account", checkTokenE
 
 ### Error Handling:
 - Implement appropriate error handling at each step to ensure a smooth user experience.
+
+## Version 1.0.14 
+
+### 1. Breaking Changes - Retrieve Context Processes 
+
+- In version 14 of the EffectiveProcessesSDK, the getContextProcesses method has been updated with the following key changes:
+
+Updated Method
+
+```swift
+func getContextProcesses(
+    for name: String,
+    query: [String: String]? = nil, 
+    checkTokenExpired: Bool, 
+    callback: @escaping (EffectiveProcessesSDK.Result<EffectiveProcessesSDK.ContextFlows>) -> Void
+)
+```
+### Key Changes:
+
+### New query Parameter:
+Allows you to pass optional query parameters for filtering (e.g., status, process type).
+
+Example Usage
+
+```swift
+epUseCase.getContextProcesses(for: "exampleContext", query: ["status": "active"], checkTokenExpired: true) { result in
+    switch result {
+    case .success(let contextFlows):
+        let processes = contextFlows.processInstances
+        // Handle processes
+    case .failure(let error):
+        // Handle error
+    }
+}
+```
+This update improves flexibility with query filters and enhances error handling with the Result type.
+
+### 2. New Functionality: In-App Session Logout Handling
+
+To handle a session logout while a process is active, you can trigger the logout action using the following code:
+
+```swift
+Resolver.resolve(EDStateUseCase.self).state?(.logedOut)
+```
+This command resolves the EDStateUseCase and invokes the .logOut state, ensuring that the user is logged out even if a process is currently active.
