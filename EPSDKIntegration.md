@@ -405,3 +405,63 @@ To handle a session logout while a process is active, you can trigger the logout
 Resolver.resolve(EDStateUseCase.self).state?(.logedOut)
 ```
 This command resolves the EDStateUseCase and invokes the .logOut state, ensuring that the user is logged out even if a process is currently active.
+
+
+Breaking Changes in EPSdkMain - 28.02.2025.
+
+# Breaking Changes
+
+1. **APIConstant Assignments Removed (Deprecated)**
+
+The following direct assignments are deprecated and should no longer be used in `EPSdkMain`. Use `EPSDK.Configuration` instead:
+
+swift
+@available(, deprecated, message: "Use EPSDK.Configuration instead")
+public static var TOKEN = ""
+@available(, deprecated, message: "Use EPSDK.Configuration instead")
+public static var APP_UNIQUE_ID: String = ""
+@available(, deprecated, message: "Use EPSDK.Configuration instead")
+public static var SHOULD_CHECK_TOKEN_EXPIRED: Bool = true
+
+
+These values are now encapsulated in the new `EPSDK.Configuration` struct.
+
+2. **Initialization Changes**
+
+`init` now requires a `Configuration` object instead of multiple parameters.
+
+**Old Initialization:**
+```swift
+let banner = .init(targetName: String, token: String, shouldCheckExpiredToken: Bool)
+```swift
+
+
+**New Initialization:**
+
+```swift
+let config = EPSDK.Configuration.Builder()
+.setUniqueID("123")
+.setToken("abc")
+.setBaseURL("https:///...")  // optional default will be used
+.setPinnedPublicKeyHashes("")  // optional default will be used
+.setShouldCheckTokenExpired(true)  // optional default will be used that is false this is for session mgmt
+.build()
+let banner = .init(configuration: config)
+```swift
+
+### Steps to Upgrade
+
+- Replace `.init` with the updated version that accepts a `Configuration` object.
+- Update all initializations to use the new `EPSDK.Configuration.Builder()`.
+- Remove direct usage of `APIConstant` values. Instead, use the `Configuration` object passed during initialization.method.
+
+
+If u need to use unatuhenticated features from SDK u have to do following to set custum baseURL for EDFlow:
+
+swift
+let config = EPSDK.Configuration.Builder()
+.setBaseURL("https:///...")
+.setPinnedPublicKeyHashes("")
+.build()
+
+ Resolver.register { config.epUseCase }
