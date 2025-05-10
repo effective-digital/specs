@@ -475,18 +475,18 @@ let config = EPSDK.Configuration.Builder()
 > Any usage of the old API will result in a **compilation error**.  
 > You must migrate to the new `BannerComponentFactoryV2` API to ensure compatibility.
 
-## Step 1: Font Registration (Required for Icon Rendering)
+### 🔤 Required: Add Font to the Main App Target and Register in `Info.plist`
 
-### 🔤 Required: Register Font in `Info.plist`
+To enable icon rendering via the SDK’s bundled font, ensure the following:
 
-To enable icon rendering via the SDK’s bundled font, add the following to your app’s `Info.plist`:
+- ✅ The font file (`Font Awesome 6 Free-Solid-900.otf`) need to be  **added to the main app target**.
+- ✅ It is properly declared in the app’s `Info.plist` file:
 
 ```xml
 <key>UIAppFonts</key>
 <array>
     <string>Font Awesome 6 Free-Solid-900.otf</string>
 </array>
-```
 
 ## Step 2: Implement and re-Configure BannerView
 # ⚠️ Important: REMOVAL API Notice – What to Use Instead
