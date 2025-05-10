@@ -465,3 +465,55 @@ let config = EPSDK.Configuration.Builder()
 .build()
 
  Resolver.register { config.epUseCase }
+
+## 📦 EffectiveProcessesSDK Integration Guide  
+**Updated: May 10, 2025**
+
+> ⚠️ **Breaking Change Notice:**  
+> As of the latest version of `EffectiveProcessesSDK`, the legacy `BannerView` initializer has been **removed**.  
+> Any usage of the old API will result in a **compilation error**.  
+> You must migrate to the new `BannerComponentFactoryV2` API to ensure compatibility.
+
+## Step 1: Font Registration (Required for Icon Rendering)
+
+### 🔤 Required: Register Font in `Info.plist`
+
+To enable icon rendering via the SDK’s bundled font, add the following to your app’s `Info.plist`:
+
+```xml
+<key>UIAppFonts</key>
+<array>
+    <string>Font Awesome 6 Free-Solid-900.otf</string>
+</array>
+```
+
+## Step 2: Implement and re-Configure BannerView
+# ⚠️ Important: REMOVAL API Notice – What to Use Instead
+
+The following usage of `BannerView` is **removed** and cant be no longer be used:
+
+```swift
+// ❌ REMOVED - do not use
+private lazy var bannerView = BannerView(
+    targetName: "", 
+    token: "Bearer \(AccessToken())", 
+    shouldCheckExpiredToken: false....
+)
+```
+
+---
+
+### ✅ Use This Instead
+
+Replace the above with the updated `BannerComponentFactoryV2.PresentOffersBannerView` API:
+
+```swift
+private lazy var banner: UIView = {
+    let config = EPSDK.Configuration.Builder()
+        .setUniqueID(targetName)
+        .setToken("Bearer \(AccessToken())")
+        .build()
+
+    return BannerComponentFactoryV2.PresentOffersBannerView(for: config, cardHeight: 150)
+}()
+```
