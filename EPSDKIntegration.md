@@ -465,6 +465,7 @@ let config = EPSDK.Configuration.Builder()
 .build()
 
  Resolver.register { config.epUseCase }
+```
 
 ## 📦 EffectiveProcessesSDK Integration Guide  
 **Updated: May 10, 2025**
@@ -500,8 +501,6 @@ private lazy var bannerView = BannerView(
     shouldCheckExpiredToken: false....
 )
 ```
-
----
 
 ### ✅ Use This Instead
 
