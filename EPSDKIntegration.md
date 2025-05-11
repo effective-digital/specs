@@ -517,3 +517,16 @@ private lazy var banner: UIView = {
     return BannerComponentFactoryV2.PresentOffersBannerView(for: config, cardHeight: 150)
 }()
 ```
+# Localizing Keyboard toolbar "Done" Button
+
+Add to your app's `Localizable.strings` files:
+
+```strings
+"Done" = "Done"; // English
+"Done" = "Fertig"; // German
+"Done" = "Terminé"; // French
+"Done" = "Hecho"; // Spanish
+"Done" = "Fatto"; // Italian
+```
+
+Place in respective language folders (e.g., `en.lproj`, `de.lproj`, etc.). Missing translations will fall back to English "Done".
