@@ -507,15 +507,49 @@ private lazy var bannerView = BannerView(
 
 Replace the above with the updated `BannerComponentFactoryV2.PresentOffersBannerView` API:
 
-```swift
-private lazy var banner: UIView = {
-    let config = EPSDK.Configuration.Builder()
-        .setUniqueID(targetName)
-        .setToken("Bearer \(AccessToken())")
-        .build()
+# Banner Component Implementation Guide
 
-    return BannerComponentFactoryV2.PresentOffersBannerView(for: config, cardHeight: 150)
-}()
+```swift
+// 1. Configure SDK
+let config = EPSDK.Configuration.Builder()
+    .setUniqueID("{{targetName}}")
+    .setBaseURL("{{BASEURL}}/dev-process-engine")
+    .setToken("{{token}}")
+    .build()
+
+// 2. Initialize Banner
+banner = BannerComponentFactoryV2.PresentOffersBannerView(
+    for: config,
+    cardHeight: 150,
+    onEmpty: { [weak self] in
+        print("Banner: No offers available to display")
+        self?.handleEmptyBanner()
+    },
+    onError: { [weak self] error in
+        print("Banner Error: \(error.localizedDescription)")
+        dump(error)
+        self?.handleBannerError(error)
+    }
+)
+```
+
+## Required Parameters
+- `config`: EPSDK configuration object
+- `cardHeight`: Banner height in points
+- `onEmpty`: Optional Handler for no offers state
+- `onError`: Optional Handler for error states
+
+## Required Handlers
+```swift
+private func handleEmptyBanner() {
+    // Handle no offers state
+    banner.isHidden = true
+}
+
+private func handleBannerError(_ error: Error) {
+    // Handle error state
+    banner.isHidden = true
+}
 ```
 # Localizing Keyboard toolbar "Done" Button
 
@@ -530,3 +564,30 @@ Add to your app's `Localizable.strings` files:
 ```
 
 Place in respective language folders (e.g., `en.lproj`, `de.lproj`, etc.). Missing translations will fall back to English "Done".
+
+# Logger Levels Guide
+
+## Log Level Hierarchy
+```
+.none < .info < .warning < .error < .success
+```
+
+## Setting Minimum Log Level
+```swift
+// In AppDelegate.swift
+Logger.minimumLogLevel = .info  // Shows all messages
+Logger.minimumLogLevel = .warning  // Shows warnings, errors, and successes
+Logger.minimumLogLevel = .error  // Shows only errors
+Logger.minimumLogLevel = .succes  // Shows only success
+Logger.minimumLogLevel = .none  // Shows nothing
+```
+
+## Quick Reference
+
+| Level    | When to Use                          | Example                                    |
+|----------|--------------------------------------|--------------------------------------------|
+| .info    | General information, debugging       | "View loaded", "API request started"       |
+| .warning | Potential issues, non-critical       | "Token expiring", "Slow response"          |
+| .error   | Actual errors, failures              | "Network failed", "Auth failed"            |
+| .success | Successful operations                | "Data saved", "Login successful"           |
+| .none    | Disable all logging                  | Use in production to disable logging       |
