@@ -591,3 +591,31 @@ Logger.minimumLogLevel = .none  // Shows nothing
 | .error   | Actual errors, failures              | "Network failed", "Auth failed"            |
 | .success | Successful operations                | "Data saved", "Login successful"           |
 | .none    | Disable all logging                  | Use in production to disable logging       |
+
+
+## ⚠️ Breaking Change Notice
+
+As of the latest release, the `EPSdkMain.registerDependancy` initializer has been **removed**.  
+Any usage of the old API will now result in a **compilation error**.
+
+---
+
+### 🔁 Migration Guide – Use This Instead
+
+```swift
+EPSdkMain.registerDependancy(
+    setBaseURL: BASE_URL,
+    setPinnedPublicKeyHashes: OPTIONAL?
+)
+```
+### 🔧 New Behavior Summary
+
+- `setBaseURL` is **mandatory**.  
+  You no longer need to set it within the banner config builder  
+  (though you can still override it if needed).
+
+- `setPinnedPublicKeyHashes` is **optional**.  
+  Use this **only** if the base server is changed.  
+  In that case, extract SSL pinned public key hashes using the script:  
+  `/extract_ssl_pinning_hash_mobile.sh`
+  Use this **only** if you're changing the base server.
