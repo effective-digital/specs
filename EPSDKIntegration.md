@@ -687,16 +687,24 @@ class DemoFlowRouter {
 ## Quick Start
 
 ### 1. Setting Up the Handler
-
+Global Access: Setting it up here ensures the handler is available throughout the entire app lifecycle.
 ```swift
-var flowRouter: EPOuterRouter = Resolver.resolve()
-flowRouter.onAutoRedirectHandler = { payload, transitionId, processId, requestBlock in
-    DemoFlowRouter.onAutoRedirectAndContinueFlow(
-        payload: payload,
-        transitionId: transitionId,
-        procesid: processId,
-        requestBlock: requestBlock
-    )
+func application(_ application: UIApplication, didFinishLaunchingWithOptions launchOptions: [UIApplication.LaunchOptionsKey: Any]?) -> Bool {
+    // Other setup code...
+
+    // Set up the flow router handler
+    var flowRouter: EPOuterRouter = Resolver.resolve()
+    flowRouter.onAutoRedirectHandler = { payload, transitionId, processId, requestBlock in
+        DemoFlowRouter.onAutoRedirectAndContinueFlow(
+            payload: payload,
+            transitionId: transitionId,
+            procesid: processId,
+            requestBlock: requestBlock
+        )
+    }
+
+    // Continue with other app setup...
+    return true
 }
 ```
 
