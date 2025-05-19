@@ -619,3 +619,251 @@ EPSdkMain.registerDependancy(
   In that case, extract SSL pinned public key hashes using the script:  
   `/extract_ssl_pinning_hash_mobile.sh`
   Use this **only** if you're changing the base server.
+
+
+# Flow Auto-Redirect Handler Documentation
+
+## Overview
+
+The `onAutoRedirectAndContinueFlow` method lets you handle different steps in your app's flow automatically, based on the `stepName` in the payload.  
+
+**SumSub verification ** is just one example—you can add your own steps (like transaction signing) using the same pattern.
+
+
+```swift
+// MARK: - DemoFlowRouter
+/// Handles automatic redirection and flow continuation in a demo scenario.
+class DemoFlowRouter {
+    
+    /// Handles auto-redirect and continues the flow process.
+    /// - Parameters:
+    ///   - payload: Base64 encoded payload string.
+    ///   - transitionId: Transition ID for the flow.
+    ///   - procesid: Process ID for the current flow.
+    ///   - requestBlock: Block to process the request and handle the flow transition.
+    public static func onAutoRedirectAndContinueFlow(payload: String, transitionId: String, procesid: String, requestBlock: @escaping RequestBlock) {
+        
+        Logger.log("Starting onAutoRedirectAndContinueFlow", level: .info)
+        let parsedValues = payload.parse(keys: "stepName", "token", "clientID")
+        Logger.log("Parsed payload: \(String(describing: parsedValues))", level: .info)
+        
+        if parsedValues?.values["stepName"] == "SUMSUB_VERIF" {
+            Logger.log("Top Most Controller dismissing ", level: .info)
+            UIApplication.shared.topMostController?.dismiss(animated: false) {
+                Logger.log("Top Most Controller dismised ", level: .info)
+                Logger.log("Step name is SUMSUB_VERIF, proceeding with flow", level: .info)
+                // Processing the payload and opening a new screen.
+                SumSubProcessor.process(payload: payload) { map in
+                    Logger.log("Payload processed: \(map)", level: .info)
+                    
+                    let data = try? JSONSerialization.data(withJSONObject: map, options: [])
+                    if data == nil {
+                        Logger.log("Failed to serialize processed payload to JSON", level: .error)
+                    } else {
+                        Logger.log("Serialized payload to JSON: \(String(describing: data))", level: .info)
+                    }
+                    
+                    // Continue the flow with the first transition.
+                    requestBlock(transitionId, procesid, data) { result in
+                        Logger.log("Request block executed", level: .info)
+                        switch result {
+                        case .success(let instance):
+                            Logger.log("Flow continuation succeeded, presenting flow instance", level: .info)
+                            Resolver.resolve(EDStateUseCase.self).state?(.presentFlow(instance))
+                        case .failure(let error):
+                            Logger.log("Flow continuation failed with error: \(error)", level: .error)
+                        }
+                    }
+                }
+            }
+        } else {
+            Logger.log("Step name does not match UMSUB_VERIF, skipping flow continuation", level: .info)
+        }
+    }
+}
+```
+
+
+## Quick Start
+
+### 1. Setting Up the Handler
+
+```swift
+var flowRouter: EPOuterRouter = Resolver.resolve()
+flowRouter.onAutoRedirectHandler = { payload, transitionId, processId, requestBlock in
+    DemoFlowRouter.onAutoRedirectAndContinueFlow(
+        payload: payload,
+        transitionId: transitionId,
+        procesid: processId,
+        requestBlock: requestBlock
+    )
+}
+```
+
+### 2. Parsing the Payload
+
+```swift
+let parsedValues = payload.parse(keys: "stepName", "token", "clientID")
+```
+
+The `parse` method implementation:
+
+```swift
+extension String {
+    func parse(keys: String...) -> (values: [String: String])? {
+        guard let data = Data(base64Encoded: self),
+              let json = try? JSONSerialization.jsonObject(with: data) as? [String: Any] else {
+            return nil
+        }
+        var values: [String: String] = [:]
+        for key in keys {
+            if let value = json[key] as? String {
+                values[key] = value
+            }
+        }
+        return values.isEmpty ? nil : (values: values)
+    }
+}
+```
+
+## Implementation Examples
+
+### SumSub Verification
+
+```swift
+if parsedValues?.values["stepName"] == "SUMSUB_VERIF" {
+    UIApplication.shared.topMostController?.dismiss(animated: false) {
+        SumSubProcessor.process(payload: payload) { result in
+            requestBlock(transitionId, procesid, result) { flowResult in
+                switch flowResult {
+                case .success(let instance):
+                    Resolver.resolve(EDStateUseCase.self).state?(.presentFlow(instance))
+                case .failure(let error):
+                    // Handle error
+                }
+            }
+        }
+    }
+}
+```
+
+### Transaction Signing
+
+```swift
+if parsedValues?.values["stepName"] == "TRANSACTION_SIGN" {
+    UIApplication.shared.topMostController?.dismiss(animated: false) {
+        TransactionSignProcessor.process(payload: payload) { result in
+            requestBlock(transitionId, procesid, result) { flowResult in
+                switch flowResult {
+                case .success(let instance):
+                    Resolver.resolve(EDStateUseCase.self).state?(.presentFlow(instance))
+                case .failure(let error):
+                    // Handle error
+                }
+            }
+        }
+    }
+}
+```
+
+## Processor Examples
+
+### SumSub Processor
+
+```swift
+class SumSubProcessor {
+    static func process(payload: String, completion: @escaping ([String: String]) -> Void) {
+        let parsedValues = payload.parse(keys: "stepName", "token", "clientID")
+        let sdk = SNSMobileSDK(accessToken: parsedValues?.values["token"] ?? "")
+
+        guard sdk.isReady else {
+            Logger.log("Initialization failed: " + sdk.verboseStatus, level: .info)
+            return
+        }
+        sdk.onDidDismiss { sdk in
+            let processedParameters = ["response": sdk.description(for: sdk.status)]
+            completion(processedParameters)
+        }
+        DispatchQueue.main.async {
+            sdk.present()
+        }
+    }
+}
+```
+
+### Transaction Signing Processor
+
+```swift
+class TransactionSignProcessor {
+    static func process(payload: String, completion: @escaping ([String: String]) -> Void) {
+        let parsedValues = payload.parse(keys: "stepName", "transactionId", "amount")
+        // Present your transaction signing UI here
+        // On completion:
+        let result = ["status": "signed", "transactionId": parsedValues?.values["transactionId"] ?? ""] // or what ever is agreed
+        completion(result)
+    }
+}
+```
+
+## Payload Format
+
+### SumSub Example
+```json
+{
+  "stepName": "SUMSUB_VERIF",
+  "token": "your_token_here",
+  "clientID": "your_client_id"
+}
+```
+
+### Transaction Signing Example
+```json
+{
+  "stepName": "TRANSACTION_SIGN",
+  "transactionId": "12345",
+  "amount": "100.00"
+}
+```
+
+
+## Full Handler Example
+
+```swift
+public static func onAutoRedirectAndContinueFlow(payload: String, transitionId: String, procesid: String, requestBlock: @escaping RequestBlock) {
+    let parsedValues = payload.parse(keys: "stepName", "token", "clientID", "transactionId", "amount")
+    switch parsedValues?.values["stepName"] {
+    case "SUMSUB_VERIF":
+        UIApplication.shared.topMostController?.dismiss(animated: false) {
+            SumSubProcessor.process(payload: payload) { result in
+                requestBlock(transitionId, procesid, result) { flowResult in
+                   Logger.log("Request block executed", level: .info)
+                        switch result {
+                        case .success(let instance):
+                            Logger.log("Flow continuation succeeded, presenting flow instance", level: .info)
+                            Resolver.resolve(EDStateUseCase.self).state?(.presentFlow(instance))
+                        case .failure(let error):
+                            Logger.log("Flow continuation failed with error: \(error)", level: .error)
+                        }
+                }
+            }
+        }
+    case "TRANSACTION_SIGN":
+        UIApplication.shared.topMostController?.dismiss(animated: false) {
+            TransactionSignProcessor.process(payload: payload) { result in
+                requestBlock(transitionId, procesid, result) { flowResult in
+                   Logger.log("Request block executed", level: .info)
+                        switch result {
+                        case .success(let instance):
+                            Logger.log("Flow continuation succeeded, presenting flow instance", level: .info)
+                            Resolver.resolve(EDStateUseCase.self).state?(.presentFlow(instance))
+                        case .failure(let error):
+                            Logger.log("Flow continuation failed with error: \(error)", level: .error)
+                        }
+                }
+            }
+        }
+    default:
+        Logger.log("Unknown stepName: \(parsedValues?.values["stepName"] ?? "nil")", level: .error)
+    }
+}
+```
