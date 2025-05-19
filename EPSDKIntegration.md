@@ -692,7 +692,9 @@ Global Access: Setting it up here ensures the handler is available throughout th
 func application(_ application: UIApplication, didFinishLaunchingWithOptions launchOptions: [UIApplication.LaunchOptionsKey: Any]?) -> Bool {
     // Other setup code...
 
-    // Set up the flow router handler
+    // Set up sdk
+    EPSdkMain.registerDependancy(setBaseURL: "")
+    // Set up the sdk flow router handler
     var flowRouter: EPOuterRouter = Resolver.resolve()
     flowRouter.onAutoRedirectHandler = { payload, transitionId, processId, requestBlock in
         DemoFlowRouter.onAutoRedirectAndContinueFlow(
