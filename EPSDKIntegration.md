@@ -909,7 +909,7 @@ It's used in the `DemoFlowRouter` to:
 - Present full screen to block user interaction
 - Provide consistent loading experience
 
-### DemoFlowRouter Implementation
+### DemoFlowRouter with WebRedirectController (WebRedirectProcessor) & Implementation & Optional SumSubProcessor example
 
 ```swift
 // MARK: - Flow Step Types
@@ -1256,4 +1256,41 @@ class WebRedirectProcessor {
         }
     }
 }
+
+import IdensicMobileSDK
+
+class SumSubProcessor {
+    static func process(payload: String, completion: @escaping ([String: String]) -> Void) {
+        let parsedValues = payload.parse(keys: "stepName", "token", "clientID")
+        let sdk = SNSMobileSDK(
+            accessToken: parsedValues?.values["token"] ?? ""
+        )
+
+        guard sdk.isReady else {
+            Logger.log("Initialization failed: " + sdk.verboseStatus, level: .info)
+            return
+        }
+        sdk.onDidDismiss { (sdk) in
+            let processedParameters = ["response": sdk.description(for: sdk.status)]
+            completion(processedParameters)
+            Logger.log("SumSubProcessor onDidDismiss: sdk has been dismissed with status [\(sdk.description(for: sdk.status))), sdk.actionResult is \(String(describing: sdk.actionResult?.description))]", level: .info)
+        }
+        sdk.onStatusDidChange { sdk, status in
+            Logger.log("SumSubProcessor onStatusDidChange: sdk has changed status [\(sdk.description(for: status))), sdk.actionResult is \(String(describing: sdk.actionResult?.description))]", level: .info)
+            if status == .failed || status == .approved || status == .actionCompleted {
+                let processedParameters = ["response": sdk.description(for: sdk.status)]
+                completion(processedParameters)
+                sdk.dismiss()
+            }
+        }
+        sdk.onEvent { sdk, event in
+            Logger.log("SumSubProcessor onEvent: sdk has trigger event [\(event.description(for: event.eventType))]", level: .info)
+        }
+        
+        DispatchQueue.main.asyncAfter(deadline: .now()) {
+            sdk.present()
+        }
+    }
+}
+
 ```
