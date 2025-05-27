@@ -1294,3 +1294,19 @@ class SumSubProcessor {
 }
 
 ```
+
+# Overriding SDK Localization Strings
+
+1. **Add to Your App's Localizable.strings**
+```strings
+"modal_terminate_close_title" = "Your Custom Title";
+"modal_terminate_close_message" = "Your Custom Message";
+"modal_terminate_action" = "Your Custom Action";
+"modal_close_action" = "Your Custom Close";
+```
+
+2. **How it Works**
+When the SDK looks for a string (e.g., "modal_terminate_close_title"):
+- First checks your app's Localizable.strings
+- If found → Uses your custom text
+- If not found → Uses the SDK's default text
