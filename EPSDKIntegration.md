@@ -620,80 +620,23 @@ EPSdkMain.registerDependancy(
   `/extract_ssl_pinning_hash_mobile.sh`
   Use this **only** if you're changing the base server.
 
-
-# Flow Auto-Redirect Handler Documentation
+# Flow Auto-Redirect Handler Implementation Guide
 
 ## Overview
 
-The `onAutoRedirectAndContinueFlow` method lets you handle different steps in your app's flow automatically, based on the `stepName` in the payload.  
+This guide provides detailed implementation examples for the Flow Auto-Redirect Handler. The handler manages automatic flow transitions in your app, with support for various flow steps and a smooth transition experience.
 
-**SumSub verification ** is just one example—you can add your own steps (like transaction signing) using the same pattern.
+## Implementation Examples
+
+### 1. Basic Setup
 
 
 ```swift
-// MARK: - DemoFlowRouter
-/// Handles automatic redirection and flow continuation in a demo scenario.
-class DemoFlowRouter {
-    
-    /// Handles auto-redirect and continues the flow process.
-    /// - Parameters:
-    ///   - payload: Base64 encoded payload string.
-    ///   - transitionId: Transition ID for the flow.
-    ///   - procesid: Process ID for the current flow.
-    ///   - requestBlock: Block to process the request and handle the flow transition.
-    public static func onAutoRedirectAndContinueFlow(payload: String, transitionId: String, procesid: String, requestBlock: @escaping RequestBlock) {
-        
-        Logger.log("Starting onAutoRedirectAndContinueFlow", level: .info)
-        let parsedValues = payload.parse(keys: "stepName", "token", "clientID")
-        Logger.log("Parsed payload: \(String(describing: parsedValues))", level: .info)
-        
-        if parsedValues?.values["stepName"] == "SUMSUB_VERIF" {
-            Logger.log("Top Most Controller dismissing ", level: .info)
-            UIApplication.shared.topMostController?.dismiss(animated: false) {
-                Logger.log("Top Most Controller dismised ", level: .info)
-                Logger.log("Step name is SUMSUB_VERIF, proceeding with flow", level: .info)
-                // Processing the payload and opening a new screen.
-                SumSubProcessor.process(payload: payload) { map in
-                    Logger.log("Payload processed: \(map)", level: .info)
-                    
-                    let data = try? JSONSerialization.data(withJSONObject: map, options: [])
-                    if data == nil {
-                        Logger.log("Failed to serialize processed payload to JSON", level: .error)
-                    } else {
-                        Logger.log("Serialized payload to JSON: \(String(describing: data))", level: .info)
-                    }
-                    
-                    // Continue the flow with the first transition.
-                    requestBlock(transitionId, procesid, data) { result in
-                        Logger.log("Request block executed", level: .info)
-                        switch result {
-                        case .success(let instance):
-                            Logger.log("Flow continuation succeeded, presenting flow instance", level: .info)
-                            Resolver.resolve(EDStateUseCase.self).state?(.presentFlow(instance))
-                        case .failure(let error):
-                            Logger.log("Flow continuation failed with error: \(error)", level: .error)
-                        }
-                    }
-                }
-            }
-        } else {
-            Logger.log("Step name does not match UMSUB_VERIF, skipping flow continuation", level: .info)
-        }
-    }
-}
-```
-
-
-## Quick Start
-
-### 1. Setting Up the Handler
-Global Access: Setting it up here ensures the handler is available throughout the entire app lifecycle.
-```swift
+// In your AppDelegate or SceneDelegate
 func application(_ application: UIApplication, didFinishLaunchingWithOptions launchOptions: [UIApplication.LaunchOptionsKey: Any]?) -> Bool {
-    // Other setup code...
-
     // Set up sdk
     EPSdkMain.registerDependancy(setBaseURL: "")
+    
     // Set up the sdk flow router handler
     var flowRouter: EPOuterRouter = Resolver.resolve()
     flowRouter.onAutoRedirectHandler = { payload, transitionId, processId, requestBlock in
@@ -704,18 +647,164 @@ func application(_ application: UIApplication, didFinishLaunchingWithOptions lau
             requestBlock: requestBlock
         )
     }
-
-    // Continue with other app setup...
+    
     return true
 }
 ```
 
-### 2. Parsing the Payload
+### 2. Adding a New Flow Step
+
+To add a new flow step, follow these steps:
+
+1. Add the step to the `FlowStep` enum:
+```swift
+enum FlowStep: String {
+    case sumsubVerif = "SUMSUB_VERIF"
+    case webView = "WEB_VIEW"
+    case yourNewStep = "YOUR_NEW_STEP"  // Add your new step
+}
+```
+
+2. Create a processor for your step:
+```swift
+class YourNewStepProcessor {
+    static func process(payload: String, completion: @escaping ([String: Any]) -> Void) {
+        // Parse your payload
+        guard let parsedValues = payload.parse(keys: "stepName", "yourParam1", "yourParam2") else {
+            Logger.log("Failed to parse payload", level: .error)
+            return
+        }
+        
+        // Your processing logic here
+        let result = [
+            "status": "completed",
+            "yourParam1": parsedValues.values["yourParam1"] ?? "",
+            "yourParam2": parsedValues.values["yourParam2"] ?? ""
+        ]
+        
+        completion(result)
+    }
+}
+```
+
+3. Add the handler in `DemoFlowRouter`:
+```swift
+private static func handleFlowStep(
+    _ step: FlowStep,
+    parsedValues: [String: String],
+    payload: String,
+    transitionId: String,
+    procesid: String,
+    requestBlock: @escaping RequestBlock
+) {
+    switch step {
+    case .sumsubVerif:
+        handleSumSubVerif(payload: payload, transitionId: transitionId, procesid: procesid, requestBlock: requestBlock)
+    case .webView:
+        handleWebView(secondParams: parsedValues["secondParams"], transitionId: transitionId, procesid: procesid, requestBlock: requestBlock)
+    case .yourNewStep:
+        handleYourNewStep(payload: payload, transitionId: transitionId, procesid: procesid, requestBlock: requestBlock)
+    }
+}
+
+private static func handleYourNewStep(
+    payload: String,
+    transitionId: String,
+    procesid: String,
+    requestBlock: @escaping RequestBlock
+) {
+    YourNewStepProcessor.process(payload: payload) { result in
+        guard let data = try? JSONSerialization.data(withJSONObject: result, options: []) else {
+            Logger.log("Failed to serialize result to JSON", level: .error)
+            return
+        }
+        
+        continueFlow(
+            transitionId: transitionId,
+            procesid: procesid,
+            data: data,
+            requestBlock: requestBlock
+        )
+    }
+}
+```
+
+### 3. Error Handling Examples
+
+```swift
+// In your processor
+class YourProcessor {
+    static func process(payload: String, completion: @escaping ([String: Any]) -> Void) {
+        // Parse payload
+        guard let parsedValues = payload.parse(keys: "stepName", "param1") else {
+            Logger.log("Failed to parse payload", level: .error)
+            completion(["error": "Invalid payload format"])
+            return
+        }
+        
+        // Validate required parameters
+        guard let param1 = parsedValues.values["param1"], !param1.isEmpty else {
+            Logger.log("Missing required parameter: param1", level: .error)
+            completion(["error": "Missing required parameter"])
+            return
+        }
+        
+        // Your processing logic
+        do {
+            let result = try processYourLogic(param1: param1)
+            completion(result)
+        } catch {
+            Logger.log("Processing failed: \(error)", level: .error)
+            completion(["error": error.localizedDescription])
+        }
+    }
+}
+```
+
+### 4. Flow Continuation Examples
+
+```swift
+// In your flow handler
+private static func continueFlow(
+    transitionId: String,
+    procesid: String,
+    data: Data,
+    requestBlock: @escaping RequestBlock
+) {
+    requestBlock(transitionId, procesid, data) { result in
+        DispatchQueue.main.async {
+            switch result {
+            case .success(let instance):
+                Logger.log("Flow continuation succeeded", level: .info)
+                hideTransitionScreen {
+                    Resolver.resolve(EDStateUseCase.self).state?(.presentFlow(instance))
+                }
+            case .failure(let error):
+                Logger.log("Flow continuation failed: \(error)", level: .error)
+                hideTransitionScreen {
+                    // Handle error (e.g., show error alert)
+                    showErrorAlert(error: error)
+                }
+            }
+        }
+    }
+}
+
+private static func showErrorAlert(error: Error) {
+    let alert = UIAlertController(
+        title: "Error",
+        message: error.localizedDescription,
+        preferredStyle: .alert
+    )
+    alert.addAction(UIAlertAction(title: "OK", style: .default))
+    UIApplication.shared.topMostController?.present(alert, animated: true)
+}
+```
+### 5. Parsing the Payload
 
 ```swift
 let parsedValues = payload.parse(keys: "stepName", "token", "clientID")
 ```
-
 The `parse` method implementation:
 
 ```swift
@@ -736,144 +825,488 @@ extension String {
 }
 ```
 
-## Implementation Examples
+## Payload Examples
 
 ### SumSub Verification
+```json
+{
+  "stepName": "SUMSUB_VERIF",
+  "secondParams": "verification_params",
+  "clientID": "your_client_id"
+}
+```
+
+### Web View
+```json
+{
+  "stepName": "WEB_VIEW",
+  "secondParams": "https://your-web-view-url.com",
+  "clientID": "your_client_id"
+}
+```
+
+### Custom Step
+```json
+{
+  "stepName": "YOUR_NEW_STEP",
+  "yourParam1": "value1",
+  "yourParam2": "value2",
+  "clientID": "your_client_id"
+}
+```
+
+## Complete Implementation
+
+### TransitionViewController
+
+The `TransitionViewController` is a simple loading screen that provides visual feedback during flow transitions. It shows a centered activity indicator on a full-screen background.
 
 ```swift
-if parsedValues?.values["stepName"] == "SUMSUB_VERIF" {
-    UIApplication.shared.topMostController?.dismiss(animated: false) {
-        SumSubProcessor.process(payload: payload) { result in
-            requestBlock(transitionId, procesid, result) { flowResult in
-                switch flowResult {
+// MARK: - Transition View Controller
+private class TransitionViewController: UIViewController {
+    private let activityIndicator: UIActivityIndicatorView
+
+    init() {
+        self.activityIndicator = UIActivityIndicatorView(style: .large)
+        super.init(nibName: nil, bundle: nil)
+    }
+
+    required init?(coder: NSCoder) {
+        fatalError("init(coder:) has not been implemented")
+    }
+
+    override func viewDidLoad() {
+        super.viewDidLoad()
+        setupUI()
+    }
+
+    private func setupUI() {
+        view.backgroundColor = .systemBackground
+
+        view.addSubview(activityIndicator)
+        activityIndicator.translatesAutoresizingMaskIntoConstraints = false
+
+        NSLayoutConstraint.activate([
+            activityIndicator.centerXAnchor.constraint(equalTo: view.centerXAnchor),
+            activityIndicator.centerYAnchor.constraint(equalTo: view.centerYAnchor),
+        ])
+
+        activityIndicator.startAnimating()
+    }
+}
+```
+
+The `TransitionViewController` serves several important purposes:
+
+1. **Visual Feedback**: Shows users that something is happening during flow transitions
+2. **Prevent User Interaction**: Blocks user interaction while processing flow steps
+3. **Smooth Transitions**: Provides a seamless experience between different flow states
+4. **Loading State**: Indicates that the app is working on processing the current step
+
+It's used in the `DemoFlowRouter` to:
+- Show during async operations
+- Hide when operations complete
+- Present full screen to block user interaction
+- Provide consistent loading experience
+
+### DemoFlowRouter with WebRedirectController (WebRedirectProcessor) & Implementation & Optional SumSubProcessor example
+
+```swift
+// MARK: - Flow Step Types
+enum FlowStep: String {
+    case sumsubVerif = "SUMSUB_VERIF"
+    case webView = "WEB_VIEW"
+}
+
+// MARK: - Flow Result
+enum FlowResult {
+    case success(ProcessInstance)
+    case failure(Error)
+}
+
+// MARK: - DemoFlowRouter
+/// Handles automatic redirection and flow continuation in a demo scenario.
+class DemoFlowRouter {
+    private static var transitionVC: TransitionViewController?
+
+    /// Handles auto-redirect and continues the flow process.
+    /// - Parameters:
+    ///   - payload: Base64 encoded payload string.
+    ///   - transitionId: Transition ID for the flow.
+    ///   - procesid: Process ID for the current flow.
+    ///   - requestBlock: Block to process the request and handle the flow transition.
+    public static func onAutoRedirectAndContinueFlow(
+        payload: String,
+        transitionId: String,
+        procesid: String,
+        requestBlock: @escaping RequestBlock
+    ) {
+        Logger.log("Starting onAutoRedirectAndContinueFlow", level: .info)
+
+        guard let parsedValues = payload.parse(keys: "stepName", "secondParams", "clientID") else {
+            Logger.log("Failed to parse payload", level: .error)
+            return
+        }
+
+        guard let stepName = parsedValues.values["stepName"],
+            let flowStep = FlowStep(rawValue: stepName)
+        else {
+            Logger.log(
+                "Invalid or unsupported step name: \(parsedValues.values["stepName"] ?? "nil")",
+                level: .error)
+            return
+        }
+
+        dismissTopController {
+            self.handleFlowStep(
+                flowStep,
+                parsedValues: parsedValues.values,
+                payload: payload,
+                transitionId: transitionId,
+                procesid: procesid,
+                requestBlock: requestBlock
+            )
+        }
+    }
+
+    // MARK: - Private Methods
+
+    private static func dismissTopController(completion: @escaping () -> Void) {
+        DispatchQueue.main.async {
+            UIApplication.shared.topMostController?.dismiss(animated: false) {
+                showTransitionScreen {
+                    completion()
+                }
+            }
+        }
+    }
+
+    private static func showTransitionScreen(completion: @escaping () -> Void) {
+        DispatchQueue.main.async {
+            transitionVC = TransitionViewController()
+            transitionVC?.modalPresentationStyle = .fullScreen
+            UIApplication.shared.topMostController?.present(transitionVC!, animated: false) {
+                completion()
+            }
+        }
+    }
+
+    private static func hideTransitionScreen(completion: @escaping () -> Void) {
+        DispatchQueue.main.async {
+            transitionVC?.dismiss(animated: false) {
+                self.transitionVC = nil
+                completion()
+            }
+        }
+    }
+
+    private static func handleFlowStep(
+        _ step: FlowStep,
+        parsedValues: [String: String],
+        payload: String,
+        transitionId: String,
+        procesid: String,
+        requestBlock: @escaping RequestBlock
+    ) {
+        switch step {
+        case .sumsubVerif:
+            handleSumSubVerif(
+                payload: payload,
+                transitionId: transitionId,
+                procesid: procesid,
+                requestBlock: requestBlock
+            )
+        case .webView:
+            handleWebView(
+                secondParams: parsedValues["secondParams"],
+                transitionId: transitionId,
+                procesid: procesid,
+                requestBlock: requestBlock
+            )
+        }
+    }
+
+    private static func handleSumSubVerif(
+        payload: String,
+        transitionId: String,
+        procesid: String,
+        requestBlock: @escaping RequestBlock
+    ) {
+        Logger.log("Processing SumSub verification", level: .info)
+
+        SumSubProcessor.process(payload: payload) { map in
+            guard let data = try? JSONSerialization.data(withJSONObject: map, options: []) else {
+                Logger.log("Failed to serialize processed payload to JSON", level: .error)
+                return
+            }
+
+            continueFlow(
+                transitionId: transitionId,
+                procesid: procesid,
+                data: data,
+                requestBlock: requestBlock
+            )
+        }
+    }
+
+    private static func handleWebView(
+        secondParams: String?,
+        transitionId: String,
+        procesid: String,
+        requestBlock: @escaping RequestBlock
+    ) {
+        guard let secondParams = secondParams else {
+            Logger.log("Missing secondParams for WebView step", level: .error)
+            return
+        }
+
+        WebRedirectProcessor.process(webViewURL: secondParams) { map in
+            guard let data = try? JSONSerialization.data(withJSONObject: map, options: []) else {
+                Logger.log("Failed to serialize WebView data to JSON", level: .error)
+                return
+            }
+
+            continueFlow(
+                transitionId: transitionId,
+                procesid: procesid,
+                data: data,
+                requestBlock: requestBlock
+            )
+        }
+    }
+
+    private static func continueFlow(
+        transitionId: String,
+        procesid: String,
+        data: Data,
+        requestBlock: @escaping RequestBlock
+    ) {
+        requestBlock(transitionId, procesid, data) { result in
+            DispatchQueue.main.async {
+                switch result {
                 case .success(let instance):
-                    Resolver.resolve(EDStateUseCase.self).state?(.presentFlow(instance))
+                    Logger.log("Flow continuation succeeded", level: .info)
+                    hideTransitionScreen {
+                        Resolver.resolve(EDStateUseCase.self).state?(.presentFlow(instance))
+                    }
                 case .failure(let error):
-                    // Handle error
+                    Logger.log("Flow continuation failed with error: \(error)", level: .error)
+                    hideTransitionScreen {}
                 }
             }
         }
     }
 }
-```
 
-### Transaction Signing
+import SwiftUI
+import UIKit
+import WebKit
 
-```swift
-if parsedValues?.values["stepName"] == "TRANSACTION_SIGN" {
-    UIApplication.shared.topMostController?.dismiss(animated: false) {
-        TransactionSignProcessor.process(payload: payload) { result in
-            requestBlock(transitionId, procesid, result) { flowResult in
-                switch flowResult {
-                case .success(let instance):
-                    Resolver.resolve(EDStateUseCase.self).state?(.presentFlow(instance))
-                case .failure(let error):
-                    // Handle error
-                }
+class WebRedirectController: UIViewController, WKNavigationDelegate {
+    var webView: WKWebView!
+    private var activityIndicator: UIActivityIndicatorView
+    private var loadingContainer: UIView
+    var config: WebRedirectConfig?
+    private var checkTimer: Timer?
+    private var closeButton: UIButton!
+    private var onClose: (() -> Void)?
+
+    init(config: WebRedirectConfig, onClose: (() -> Void)? = nil) {
+        self.config = config
+        self.onClose = onClose
+        self.activityIndicator = UIActivityIndicatorView(style: .large)
+        self.loadingContainer = UIView()
+        super.init(nibName: nil, bundle: nil)
+    }
+
+    required init?(coder: NSCoder) {
+        fatalError("init(coder:) has not been implemented")
+    }
+
+    struct WebRedirectConfig {
+        var webViewURL: String?  // WEB URL - web page to be openned
+
+        static func parsePayload(_ payload: String) -> WebRedirectConfig {
+            let components = payload.components(separatedBy: ";")
+            guard components.count >= 4 else {
+                fatalError("Invalid payload format")
+            }
+
+            // First component should be "WEB_VIEW"
+            guard components[0] == "WEB_VIEW" else {
+                fatalError("Invalid request type")
+            }
+
+            return WebRedirectConfig(
+                webViewURL: components[1]
+            )
+        }
+    }
+
+    override func viewDidLoad() {
+        super.viewDidLoad()
+        self.view.backgroundColor = .systemBackground
+        guard let uri = config?.webViewURL,
+            let url = URL(string: uri)
+        else {
+            fatalError("no uri or url .. sorry")
+        }
+        addWebView(url: url)
+        setupCloseButton()
+        removeCookies()
+    }
+
+    func addWebView(url: URL) {
+        webView = WKWebView(frame: view.bounds, configuration: WKWebViewConfiguration())
+        webView.navigationDelegate = self
+        view.addSubview(webView)
+
+        let request = URLRequest(url: url)
+        webView.load(request)
+    }
+
+    private func showLoading() {
+        view.addSubview(activityIndicator)
+        activityIndicator.translatesAutoresizingMaskIntoConstraints = false
+
+        NSLayoutConstraint.activate([
+            activityIndicator.centerXAnchor.constraint(equalTo: view.centerXAnchor),
+            activityIndicator.centerYAnchor.constraint(equalTo: view.centerYAnchor),
+        ])
+
+        activityIndicator.startAnimating()
+    }
+
+    private func hideLoading() {
+        activityIndicator.stopAnimating()
+        activityIndicator.removeFromSuperview()
+    }
+
+    func removeCookies() {
+        let cookieStore = webView.configuration.websiteDataStore.httpCookieStore
+        cookieStore.getAllCookies { cookies in
+            for cookie in cookies {
+                cookieStore.delete(cookie)
+            }
+        }
+    }
+
+    private func setupCloseButton() {
+        closeButton = UIButton(type: .system)
+        closeButton.setImage(UIImage(systemName: "xmark.circle.fill"), for: .normal)
+        closeButton.tintColor = .white
+        closeButton.backgroundColor = .black.withAlphaComponent(0.5)
+        closeButton.layer.cornerRadius = 20
+        closeButton.translatesAutoresizingMaskIntoConstraints = false
+
+        view.addSubview(closeButton)
+
+        NSLayoutConstraint.activate([
+            closeButton.topAnchor.constraint(
+                equalTo: view.safeAreaLayoutGuide.topAnchor, constant: 16),
+            closeButton.trailingAnchor.constraint(equalTo: view.trailingAnchor, constant: -16),
+            closeButton.widthAnchor.constraint(equalToConstant: 40),
+            closeButton.heightAnchor.constraint(equalToConstant: 40),
+        ])
+        closeButton.addAction(
+            UIAction(handler: { [weak self] _ in
+                self?.closeButtonTapped()
+            }), for: .touchUpInside)
+    }
+
+    private func closeButtonTapped() {
+        dismiss(animated: true) { [weak self] in
+            self?.onClose?()
+        }
+    }
+
+    // MARK: - WKNavigationDelegate methods
+
+    func webView(_ webView: WKWebView, didStartProvisionalNavigation navigation: WKNavigation!) {
+        showLoading()
+    }
+
+    func webView(_ webView: WKWebView, didFinish navigation: WKNavigation!) {
+        hideLoading()
+    }
+
+    func webView(_ webView: WKWebView, didFail navigation: WKNavigation!, withError error: Error) {
+        hideLoading()
+    }
+}
+class WebRedirectProcessor {
+    static func process(webViewURL: String?, completion: @escaping ([String: String]) -> Void) {
+        let config = WebRedirectController.WebRedirectConfig(webViewURL: webViewURL)
+        
+        let controller = WebRedirectController(config: config) {
+            let processedParameters = ["": ""]
+            DispatchQueue.main.asyncAfter(deadline: .now()){
+                completion(processedParameters)
+                Logger.log("WebRedirectProcessor: Web view has been closed manually with parameters: \(processedParameters)", level: .info)
+            }
+        }
+        
+        // Present the controller
+        DispatchQueue.main.async {
+            if let topViewController =  UIApplication.shared.topMostController {
+                controller.modalPresentationStyle = .fullScreen
+                controller.modalTransitionStyle = .crossDissolve
+                topViewController.present(controller, animated: true)
             }
         }
     }
 }
-```
 
-## Processor Examples
+import IdensicMobileSDK
 
-### SumSub Processor
-
-```swift
 class SumSubProcessor {
     static func process(payload: String, completion: @escaping ([String: String]) -> Void) {
         let parsedValues = payload.parse(keys: "stepName", "token", "clientID")
-        let sdk = SNSMobileSDK(accessToken: parsedValues?.values["token"] ?? "")
+        let sdk = SNSMobileSDK(
+            accessToken: parsedValues?.values["token"] ?? ""
+        )
 
         guard sdk.isReady else {
             Logger.log("Initialization failed: " + sdk.verboseStatus, level: .info)
             return
         }
-        sdk.onDidDismiss { sdk in
+        sdk.onDidDismiss { (sdk) in
             let processedParameters = ["response": sdk.description(for: sdk.status)]
             completion(processedParameters)
+            Logger.log("SumSubProcessor onDidDismiss: sdk has been dismissed with status [\(sdk.description(for: sdk.status))), sdk.actionResult is \(String(describing: sdk.actionResult?.description))]", level: .info)
         }
-        DispatchQueue.main.async {
+        sdk.onStatusDidChange { sdk, status in
+            Logger.log("SumSubProcessor onStatusDidChange: sdk has changed status [\(sdk.description(for: status))), sdk.actionResult is \(String(describing: sdk.actionResult?.description))]", level: .info)
+            if status == .failed || status == .approved || status == .actionCompleted {
+                let processedParameters = ["response": sdk.description(for: sdk.status)]
+                completion(processedParameters)
+                sdk.dismiss()
+            }
+        }
+        sdk.onEvent { sdk, event in
+            Logger.log("SumSubProcessor onEvent: sdk has trigger event [\(event.description(for: event.eventType))]", level: .info)
+        }
+        
+        DispatchQueue.main.asyncAfter(deadline: .now()) {
             sdk.present()
         }
     }
 }
+
 ```
 
-### Transaction Signing Processor
+# Overriding SDK Localization Strings
 
-```swift
-class TransactionSignProcessor {
-    static func process(payload: String, completion: @escaping ([String: String]) -> Void) {
-        let parsedValues = payload.parse(keys: "stepName", "transactionId", "amount")
-        // Present your transaction signing UI here
-        // On completion:
-        let result = ["status": "signed", "transactionId": parsedValues?.values["transactionId"] ?? ""] // or what ever is agreed
-        completion(result)
-    }
-}
+1. **Add to Your App's Localizable.strings**
+```strings
+"modal_terminate_close_title" = "Your Custom Title";
+"modal_terminate_close_message" = "Your Custom Message";
+"modal_terminate_action" = "Your Custom Action";
+"modal_close_action" = "Your Custom Close";
 ```
 
-## Payload Format
-
-### SumSub Example
-```json
-{
-  "stepName": "SUMSUB_VERIF",
-  "token": "your_token_here",
-  "clientID": "your_client_id"
-}
-```
-
-### Transaction Signing Example
-```json
-{
-  "stepName": "TRANSACTION_SIGN",
-  "transactionId": "12345",
-  "amount": "100.00"
-}
-```
-
-
-## Full Handler Example
-
-```swift
-public static func onAutoRedirectAndContinueFlow(payload: String, transitionId: String, procesid: String, requestBlock: @escaping RequestBlock) {
-    let parsedValues = payload.parse(keys: "stepName", "token", "clientID", "transactionId", "amount")
-    switch parsedValues?.values["stepName"] {
-    case "SUMSUB_VERIF":
-        UIApplication.shared.topMostController?.dismiss(animated: false) {
-            SumSubProcessor.process(payload: payload) { result in
-                requestBlock(transitionId, procesid, result) { flowResult in
-                   Logger.log("Request block executed", level: .info)
-                        switch result {
-                        case .success(let instance):
-                            Logger.log("Flow continuation succeeded, presenting flow instance", level: .info)
-                            Resolver.resolve(EDStateUseCase.self).state?(.presentFlow(instance))
-                        case .failure(let error):
-                            Logger.log("Flow continuation failed with error: \(error)", level: .error)
-                        }
-                }
-            }
-        }
-    case "TRANSACTION_SIGN":
-        UIApplication.shared.topMostController?.dismiss(animated: false) {
-            TransactionSignProcessor.process(payload: payload) { result in
-                requestBlock(transitionId, procesid, result) { flowResult in
-                   Logger.log("Request block executed", level: .info)
-                        switch result {
-                        case .success(let instance):
-                            Logger.log("Flow continuation succeeded, presenting flow instance", level: .info)
-                            Resolver.resolve(EDStateUseCase.self).state?(.presentFlow(instance))
-                        case .failure(let error):
-                            Logger.log("Flow continuation failed with error: \(error)", level: .error)
-                        }
-                }
-            }
-        }
-    default:
-        Logger.log("Unknown stepName: \(parsedValues?.values["stepName"] ?? "nil")", level: .error)
-    }
-}
-```
+2. **How it Works**
+When the SDK looks for a string (e.g., "modal_terminate_close_title"):
+- First checks your app's Localizable.strings
+- If found → Uses your custom text
+- If not found → Uses the SDK's default text
