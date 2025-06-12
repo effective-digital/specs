@@ -763,8 +763,58 @@ class YourProcessor {
 
 ### 4. Flow Continuation Examples
 
+## Option 1: Using EPUseCase (Direct Control)
+
+This option provides direct control over the flow presentation using `EPUseCase`. It's useful when you need precise control over the flow's presentation and navigation.
+
 ```swift
-// In your flow handler
+private static func continueFlow(
+    transitionId: String,
+    procesid: String,
+    data: Data,
+    requestBlock: @escaping RequestBlock
+) {
+    requestBlock(transitionId, procesid, data) { result in
+        DispatchQueue.main.async {
+            switch result {
+            case .success(let instance):
+                Logger.log("Flow continuation succeeded", level: .info)
+                hideTransitionScreen {
+                    // Note: UIApplication.shared.topMostController is just an example.
+                    // Your application should determine the appropriate view controller
+                    // based on its specific navigation requirements and architecture.
+                    // This could be:
+                    // - A specific tab in your tab bar
+                    // - A particular navigation stack
+                    // - A modal presentation context
+                    // - Any other view controller that makes sense for your flow
+                    let rootVC = UIApplication.shared.topMostController
+                    
+                    let outerRouter: EPOuterRouter = Resolver.resolve()
+                    Resolver.resolve(EPUseCase.self).openFlow(instance, outerRouter: outerRouter, navigation: rootVC)
+                }
+            case .failure(let error):
+                Logger.log("Flow continuation failed with error: \(error)", level: .error)
+                hideTransitionScreen {
+                    // Handle error (e.g., show error alert)
+                    showErrorAlert(error: error)
+                }
+            }
+        }
+    }
+}
+```
+
+### Key Features:
+- Direct control over flow presentation
+- Custom navigation handling
+- Suitable for complex navigation scenarios
+
+## Option 2: Using EDStateUseCase (State-Driven)
+
+This option uses a state-driven approach with `EDStateUseCase`. It's ideal for applications that follow a state management pattern and need centralized flow control.
+
+```swift
 private static func continueFlow(
     transitionId: String,
     procesid: String,
@@ -780,7 +830,7 @@ private static func continueFlow(
                     Resolver.resolve(EDStateUseCase.self).state?(.presentFlow(instance))
                 }
             case .failure(let error):
-                Logger.log("Flow continuation failed: \(error)", level: .error)
+                Logger.log("Flow continuation failed with error: \(error)", level: .error)
                 hideTransitionScreen {
                     // Handle error (e.g., show error alert)
                     showErrorAlert(error: error)
@@ -789,6 +839,11 @@ private static func continueFlow(
         }
     }
 }
+```
+
+### Key Features:
+- State-driven flow management
+- Centralized flow control
 
 private static func showErrorAlert(error: Error) {
     let alert = UIAlertController(
