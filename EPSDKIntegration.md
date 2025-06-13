@@ -1046,11 +1046,25 @@ class DemoFlowRouter {
         }
     }
 
-    private static func hideTransitionScreen(completion: @escaping () -> Void) {
+private static func hideTransitionScreen(completion: @escaping () -> Void) {
         DispatchQueue.main.async {
-            transitionVC?.dismiss(animated: false) {
-                self.transitionVC = nil
-                completion()
+            if UIApplication.shared.applicationState == .active {
+                transitionVC?.dismiss(animated: false) {
+                    self.transitionVC = nil
+                    completion()
+                }
+            } else {
+                // If app is not active, wait for it to become active
+                NotificationCenter.default.addObserver(
+                    forName: UIApplication.didBecomeActiveNotification,
+                    object: nil,
+                    queue: .main
+                ) { _ in
+                    transitionVC?.dismiss(animated: false) {
+                        self.transitionVC = nil
+                        completion()
+                    }
+                }
             }
         }
     }
