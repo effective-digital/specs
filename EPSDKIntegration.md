@@ -1379,3 +1379,148 @@ When the SDK looks for a string (e.g., "modal_terminate_close_title"):
 - First checks your app's Localizable.strings
 - If found → Uses your custom text
 - If not found → Uses the SDK's default text
+
+# EffectiveProcessesSDK Integration Without Banner
+
+This guide outlines how to integrate `EffectiveProcessesSDK` **without using the Banner wrapper**. This setup gives you full manual control over SDK initialization, flow instance handling, and presentation logic.
+
+---
+
+##  1. `setupFlowSDK(builder:)`
+
+Initializes the SDK **after user login**, typically on the **Dashboard screen**, once the JWT token is available.
+
+###  When to use:
+Call this method immediately after a successful login, once the JWT token is available.
+
+###  `overrideState: false` explanation:
+Setting `overrideState = false` disables automatic SDK-based presentation behavior.  
+This ensures **you control when and how the flow appears**, which is required when not using the banner orchestration.
+
+```swift
+func setupFlowSDK(builder: EPSDK.Configuration) {
+    EPSdkMain.shared = EPSdkMain(builder: builder, overrideState: false) { result in
+        DispatchQueue.main.async {
+            switch result {
+            case .failure(let error):
+                Logger.log("[EPSdkMain failed]: \(error.localizedDescription)", level: .error)
+            case .success:
+                Logger.log("[EPSdkMain success]", level: .success)
+            }
+        }
+    }
+}
+```
+
+---
+
+## 2. `openFlowInstance(instance:)`
+
+Starts or resumes a specific flow instance manually.
+
+###  When to use:
+Use this when the user **taps a button**, **selects a menu**, or otherwise initiates a process manually.
+
+###  Two Presentation Options:
+
+#### Option 1: SDK-managed presentation via `EDStateUseCase`
+
+This approach triggers a `.presentFlow` state update.  
+The flow presentation is expected to be handled in your centralized `flowState()` observer.
+
+```swift
+DispatchQueue.main.async {
+    Resolver.resolve(EDStateUseCase.self).state?(.presentFlow(instance))
+}
+```
+
+#### Option 2: Direct manual presentation
+
+This approach bypasses SDK state and **immediately opens** the flow on a specific view controller.
+
+```swift
+DispatchQueue.main.async {
+    // ⚠️ Integration Note:
+    // `topMostController` is used here for convenience only.
+    // Replace with your actual visible UIViewController that can safely present the flow modally.
+    let rootVC = UIApplication.shared.topMostController
+    let outerRouter: EPOuterRouter = Resolver.resolve()
+    Resolver.resolve(EPUseCase.self).openFlow(instance, outerRouter: outerRouter, navigation: rootVC)
+}
+```
+
+###  Full Implementation Example:
+
+```swift
+func openFlowIntsance(instance: String) {
+    Resolver.resolve(EPUseCase.self).startOrResumeProcess(instance) { result in
+        switch result {
+        case .success(let instance):
+            Logger.log("Opening flow instance \(instance)", level: .info)
+
+            // Option 1: SDK-managed presentation via state change
+            // ---------------------------------------------------
+            // This approach relies on EDStateUseCase to emit a `.presentFlow` event.
+            // The SDK expects you to observe this state and handle it using the `flowState()` method.
+            // Use this option if you've configured centralized state-driven flow presentation.
+            DispatchQueue.main.async {
+                Resolver.resolve(EDStateUseCase.self).state?(.presentFlow(instance))
+            }
+
+            // Option 2: Direct manual presentation of the flow
+            // ------------------------------------------------
+            // This bypasses the SDK’s state system and directly opens the flow view.
+            // You must provide the view controller that should present the flow.
+            // ⚠️ Integration Note:
+            // `UIApplication.shared.topMostController` is used here **for convenience only**.
+            // Replace it with your actual view controller that is currently visible and capable
+            // of presenting the flow modally.
+            DispatchQueue.main.async {
+                let rootVC = UIApplication.shared.topMostController
+                let outerRouter: EPOuterRouter = Resolver.resolve()
+                Resolver.resolve(EPUseCase.self).openFlow(instance, outerRouter: outerRouter, navigation: rootVC)
+            }
+
+        case .failure(let error):
+            Logger.log("Failed to start or resume process: \(error.localizedDescription)", level: .error)
+
+        @unknown default:
+            Logger.log("Fatal error", level: .error)
+            fatalError()
+        }
+    }
+}
+```
+
+---
+
+## ⚙️ 3. `flowState()` (Optional)
+
+Handles `.presentFlow` state transition triggered by the SDK when `overrideState = false`.
+
+###  When to use:
+Call this once during setup to respond to SDK-triggered presentation signals.
+
+```swift
+fileprivate func flowState() {
+    var flowState: EDStateUseCase = Resolver.resolve()
+    flowState.state = { [weak self] state in
+        guard let self = self else { return }
+        switch state {
+        case .presentFlow(let instance):
+            DispatchQueue.main.async {
+                // ⚠️ Integration Note:
+                // Replace `topMostController` with the correct view controller in your hierarchy.
+                // It must be able to present the flow modally and handle any transitions.
+                let rootVC = UIApplication.shared.topMostController
+                let outerRouter: EPOuterRouter = Resolver.resolve()
+                Resolver.resolve(EPUseCase.self).openFlow(instance, outerRouter: outerRouter, navigation: rootVC)
+            }
+        @unknown default:
+            fatalError("Unhandled SDK state")
+        }
+    }
+}
+```
+
+---
