@@ -600,6 +600,7 @@ Any usage of the old API will now result in a **compilation error**.
 
 ---
 
+
 ### 🔁 Migration Guide – Use This Instead
 
 ```swift
@@ -1414,6 +1415,7 @@ func setupFlowSDK(builder: EPSDK.Configuration) {
 
 ---
 
+
 ## 2. `openFlowInstance(instance:)`
 
 Starts or resumes a specific flow instance manually.
@@ -1524,3 +1526,175 @@ fileprivate func flowState() {
 ```
 
 ---
+
+
+## 4. Offer Journey - Integration Example (Using `openFlowIntsance(instance:)`)
+
+```swift
+import UIKit
+import Resolver
+import EffectiveProcessesSDK
+
+// MARK: - Generic setup using UINavigationController
+@MainActor
+func makeOfferJourneyViewController(
+    navigationController: UINavigationController,
+    openFlowIntsance: @escaping (String) -> Void,
+    predefinedJourneyHandlers: [String: () -> Void] = [:]
+) -> UIViewController {
+    let offerRouter = OfferTapRouter(
+        predefinedJourneyHandlers: predefinedJourneyHandlers,
+        onOpenFlow: openFlowIntsance
+    )
+    let offersVC: UIViewController = OfferJourneyFactory.build(router: offerRouter, strings: .default)
+    return offersVC
+}
+
+// MARK: - Offer tap router
+final class OfferTapRouter: OfferJourneyRouter {
+    // Hardcoded / predefined instance IDs that should open existing app features
+    private let predefinedJourneyHandlers: [String: () -> Void]
+    private let onOpenFlow: (String) -> Void
+
+    init(
+        predefinedJourneyHandlers: [String: () -> Void],
+        onOpenFlow: @escaping (String) -> Void
+    ) {
+        self.predefinedJourneyHandlers = predefinedJourneyHandlers
+        self.onOpenFlow = onOpenFlow
+    }
+
+    func onSelect(item: OfferItem) {
+        // `onSelect` returns full `OfferItem`.
+        // Use `item.instanceId` for routing decision.
+        if let predefined = predefinedJourneyHandlers[item.instanceId] {
+            predefined() // open existing feature journey
+            return
+        }
+
+        // All non-predefined journeys should open standard ED flow
+        onOpenFlow(item.instanceId)
+    }
+}
+
+// MARK: - Host-side flow opener (single source of truth)
+func openFlowIntsance(instance: String, navigationController: UINavigationController) {
+    let epUseCase: EPUseCase = Resolver.resolve()
+    let outerRouter: EPOuterRouter = Resolver.resolve()
+
+    epUseCase.startOrResumeProcess(instance) { result in
+        switch result {
+        case .success(let processInstance):
+            DispatchQueue.main.async {
+                epUseCase.openFlow(
+                    processInstance,
+                    outerRouter: outerRouter,
+                    navigation: navigationController
+                )
+            }
+
+        case .failure(let error):
+            Logger.log("Failed to start or resume process: \(error.localizedDescription)", level: .error)
+
+        @unknown default:
+            Logger.log("Fatal error", level: .error)
+            fatalError()
+        }
+    }
+}
+```
+## Call:
+
+```swift
+@MainActor
+func showOffers(in navigationController: UINavigationController) {
+    let predefinedJourneys: [String: () -> Void] = [
+        "PAYMENT_SIGN_JOURNEY": {
+            // Open existing Payment Sign feature
+            NotificationCenter.default.post(
+                name: .openMenuItem,
+                object: nil,
+                userInfo: ["item": TabbarItemType.payment]
+            )
+        },
+        "CARD_MANAGEMENT_JOURNEY": {
+            // Open existing Cards feature
+            NotificationCenter.default.post(
+                name: .openMenuItem,
+                object: nil,
+                userInfo: ["item": TabbarItemType.cards]
+            )
+        }
+    ]
+
+    let offersVC = makeOfferJourneyViewController(
+        navigationController: navigationController,
+        openFlowIntsance: { instanceId in
+            openFlowIntsance(instance: instanceId, navigationController: navigationController)
+        },
+        predefinedJourneyHandlers: predefinedJourneys
+    )
+
+    navigationController.pushViewController(offersVC, animated: true)
+}
+```
+
+```swift
+@MainActor
+func setOffersAsRoot(in navigationController: UINavigationController) {
+    let offersVC = makeOfferJourneyViewController(
+        navigationController: navigationController,
+        openFlowIntsance: { instanceId in
+            openFlowIntsance(instance: instanceId, navigationController: navigationController)
+        }
+    )
+
+    navigationController.setViewControllers([offersVC], animated: false)
+}
+```
+
+## EffectiveProcessesSDK 1.0.53 Release Notes
+
+### 1) Token refresh + auto-retry on 401
+
+- New API: `APIClient.setTokenRefresher(timeout:refresher:)`
+  - Provide a closure that returns a fresh bearer token (or nil on failure).
+  - On HTTP 401, the SDK waits up to `timeout` (default 10s) for a new token and retries the failed request once (`execute`, `executeRawJSON`, `upload`) with `allowRetry = false` on the retry.
+  - If the refresher returns nil/empty or times out, normal error handling runs and the 401 is still emitted on `EPSDKEvents.errors`.
+- Optional monitoring: subscribe to `EPSDKEvents.errors` to observe 401/other SDK request errors.
+
+**Usage**
+
+```swift
+APIClient.setTokenRefresher(timeout: 8) { completion in
+    myAuthService.refreshToken { newToken in
+        completion(newToken) // include "Bearer ..." if needed, or nil on failure
+    }
+}
+// Optional: observe SDK errors
+EPSDKEvents.errors
+  .receive(on: DispatchQueue.main)
+  .sink { event in print("SDK error: \(event)") }
+  .store(in: &cancellables)
+```
+
+### 2) OfferJourney embedding + localization overrides
+
+- Factory supports UIKit and SwiftUI embedding:
+  - UIKit: `let vc = OfferJourneyFactory.build(router: myRouter)` (UIViewController)
+  - SwiftUI: `let view = OfferJourneyFactory.build(router: myRouter, strings: OfferJourneyStrings.localized())`
+- Localization keys:
+  - Error: `offer_journey_error_title`, `offer_journey_error_message`, `offer_journey_retry_title`
+  - Terminate modal: `modal_terminate_close_title`, `modal_terminate_close_message`, `modal_terminate_action`, `modal_close_action`
+- Lookup order:
+  - Errors: main/app bundle -> custom fallback passed to `OfferJourneyStrings.localized` (if non-empty) -> SDK bundle `EffectiveProcessesSDK.bundle` -> default/empty fallback.
+  - Modal: main/app bundle -> SDK bundle -> default fallback.
+- Override options:
+  1) Add the keys above to your app’s `Localizable.strings` (or chosen table).
+  2) Or pass `strings: OfferJourneyStrings(...)` / `.localized(bundle:tableName:fallback:)` into `build`; any non-empty values you supply win over bundle strings.
+# Changelog
+
+## EffectiveProcessesSDK 1.0.54 - 2026-02-26 Release Notes
+- Fixed `OfferJourneyFactory.build(router:)` resolver recursion that could cause infinite `OfferJourneyRouter` resolving and stack overflow (`EXC_BAD_ACCESS`).
+- Updated Offer Journey router registration to register directly as `OfferJourneyRouter` and avoid self-referential `.implements(OfferJourneyRouter.self)` aliasing.
+
